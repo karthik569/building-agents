@@ -1,0 +1,14 @@
+Release checklist — Q3
+======================
+
+The deploy is blocked on two things:
+
+  1. The billing service still returns 500 on /invoices when the account has
+     no payment method on file. Owner: platform team.
+  2. Nobody has written the rollback runbook.
+
+Everything else is green. Do not ship until (1) is fixed; the workaround is to
+return an empty invoice list instead, which is worse.
+
+Owner: @dana
+Status: blocked

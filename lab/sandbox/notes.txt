@@ -1,0 +1,10 @@
+Sandbox for the agent to poke at. Keep this directory small: you should be
+able to hold every file in your head while you debug the loop.
+
+Files here:
+  notes.txt              - this file
+  release-checklist.txt  - a short, realistic document with a status in it
+
+Nothing here is secret. The point is to have a filesystem small enough that
+when the agent does something surprising, the cause is the loop and not the
+data.

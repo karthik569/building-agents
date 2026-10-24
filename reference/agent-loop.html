@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference — The Agent Loop</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<link rel="stylesheet" href="../assets/reference.css">
+</head>
+<body class="ref">
+<main class="lesson">
+
+<h1>The Agent Loop</h1>
+<p class="subtitle">Reference card 01 · print me · revise before any architecture review</p>
+
+<h2>The whole thing</h2>
+
+<div class="flow">
+  <div class="box accent">task<br>into context</div>
+  <div class="arrow">→</div>
+  <div class="box">model returns<br>a turn</div>
+  <div class="arrow">→</div>
+  <div class="box">tool calls?<br>execute them</div>
+  <div class="arrow">→</div>
+  <div class="box">append results<br>to context</div>
+  <div class="arrow">↺</div>
+</div>
+<p class="small faint" style="margin-top:-.6rem">
+Exit when a turn contains no tool calls, or when you hit the step cap.
+</p>
+
+<pre><code>messages = [system, user_task]
+for step in range(MAX_STEPS):
+    turn = model(messages, tools)
+    messages.append(turn)
+    if not turn.tool_calls:
+        return turn.text          # done
+    for call in turn.tool_calls:
+        result = run(tool=call.name, **call.args)
+        messages.append({"tool", call.id, result})
+return TIMEOUT                    # never omit this branch</code></pre>
+
+<h2>What each piece is actually for</h2>
+
+<dl class="defs">
+  <div class="def">
+    <dt>Context list</dt>
+    <dd>The entire memory. The provider is stateless — it sees only what you resend.
+    Append-only is the simplest correct model.
+    <span class="avoid">Not a cache. Not a database. A list you rebuild each call.</span></dd>
+  </div>
+  <div class="def">
+    <dt>Tool calls</dt>
+    <dd>Structured output, parsed into a name plus arguments. The model is not
+    executing anything; it is asking you to.
+    <span class="avoid">Not actions. Not side effects. Requests.</span></dd>
+  </div>
+  <div class="def">
+    <dt>Tool results</dt>
+    <dd>Plain content appended with a matching <code>id</code>. Errors are results too.
+    <span class="avoid">Not exceptions. Never raise into the loop.</span></dd>
+  </div>
+  <div class="def">
+    <dt>Step cap</dt>
+    <dd>The only thing standing between a confused model and an unbounded bill.
+    <span class="avoid">Not a timeout. A budget on reasoning steps.</span></dd>
+  </div>
+  <div class="def">
+    <dt>Trace</dt>
+    <dd>Every event as data: step, kind, detail. Built so a failed run can be replayed.
+    <span class="avoid">Not print statements. Not a log file.</span></dd>
+  </div>
+</dl>
+
+<h2>Workflow or agent? Decide in ten seconds</h2>
+
+<table class="tbl">
+  <thead>
+    <tr><th>Question</th><th>Workflow</th><th>Agent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Can you name the steps in advance?</td><td>Yes → workflow</td><td>No → agent</td></tr>
+    <tr><td>Is the step count predictable?</td><td>Fixed</td><td>Unknown, variable</td></tr>
+    <tr><td>Cost per task</td><td>Bounded</td><td>Unbounded without a cap</td></tr>
+    <tr><td>Failure blast radius</td><td>One step</td><td>Compounds across steps</td></tr>
+    <tr><td>Debugging</td><td>Read the code</td><td>Read the trace</td></tr>
+    <tr><td>Right default</td><td colspan="2"><strong>Start here.</strong> Escalate only against a failing trace.</td></tr>
+  </tbody>
+</table>
+
+<h2>Compound error — the arithmetic that governs everything</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h3>Per-step accuracy is not task accuracy</h3>
+    <p>95% per step over 10 steps ≈ 60% success. Over 100 steps ≈ 0.6%.</p>
+    <p>This is why step caps and short agents beat clever planners.</p>
+  </div>
+  <div class="card">
+    <h3>Consequences</h3>
+    <ul>
+      <li>Prefer fewer, coarser steps.</li>
+      <li>Make each step verifiable (tests, schemas).</li>
+      <li>Return errors as content so step N+1 can repair step N.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Failure modes to check in this order</h2>
+
+<dl class="defs">
+  <div class="def">
+    <dt>Invalid tool</dt>
+    <dd>Model names a tool that is not in the inventory. Cause: stale prompt, or tool
+    names that are too similar to each other.</dd>
+  </div>
+  <div class="def">
+    <dt>Invalid parameters</dt>
+    <dd>Right tool, wrong shape. Cause: schema too permissive, or missing required fields.
+    Fix the shape, not the prompt.</dd>
+  </div>
+  <div class="def">
+    <dt>Wrong parameter values</dt>
+    <dd>Right shape, wrong content — a path, an ID, a date. Cause: the model guessed
+    instead of reading. Fix by requiring a read step first.</dd>
+  </div>
+  <div class="def">
+    <dt>Tool failure</dt>
+    <dd>The tool ran and returned garbage. Your bug, not the model's. Add a test at the
+    tool boundary.</dd>
+  </div>
+  <div class="def">
+    <dt>Reflection failure</dt>
+    <dd>The agent insists it succeeded when it did not. Cause: no ground truth in the
+    loop. Fix with an executable check, not more prompting.</dd>
+  </div>
+  <div class="def">
+    <dt>Loop / thrash</dt>
+    <dd>Repeating a call that already failed. Cause: error content too vague, or no
+    memory of the attempt. Fix the error message; it is prompt text.</dd>
+  </div>
+</dl>
+
+<h2>Sentences to use in a design review</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h3>Defensible</h3>
+    <ul>
+      <li>"The steps are known, so this is a workflow."</li>
+      <li>"We cap at six steps; median is three."</li>
+      <li>"Errors return as content so it can self-correct."</li>
+      <li>"The path is absolute because relative paths broke us."</li>
+      <li>"The eval set is 20 tasks; we gate merges on it."</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Red flags</h3>
+    <ul>
+      <li>"The framework handles that."</li>
+      <li>"It works when I try it."</li>
+      <li>"We added another agent to check the first agent."</li>
+      <li>"The prompt is 4,000 lines but it's fine."</li>
+      <li>"We'll add evals after launch."</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Sources</h2>
+<p class="small">
+Anthropic, <a href="https://www.anthropic.com/research/building-effective-agents">Building effective agents</a> —
+workflow/agent split, ACI, poka-yoke.
+HumanLayer, <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a> —
+own your prompts, context, control flow; errors as content.
+Chip Huyen, <a href="https://huyenchip.com/2025/01/07/agents.html">Agents</a> —
+compound error arithmetic and the failure-mode taxonomy.
+Thorsten Ball, <a href="https://ampcode.com/how-to-build-an-agent">How to Build an Agent</a> —
+the minimal working loop in &lt;400 lines.
+</p>
+
+<div class="nav">
+  <a href="../lessons/0001-the-loop-is-the-agent.html">← Lesson 01: The loop is the agent</a>
+  <a class="next" href="../GLOSSARY.md">Glossary →</a>
+</div>
+
+</main>
+</body>
+</html>

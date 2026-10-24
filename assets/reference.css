@@ -1,0 +1,127 @@
+/* ==========================================================================
+   reference.css — print-first styles for reference cards.
+   Layered on top of lesson.css. Optimised for A4 print and quick scanning,
+   not for linear reading. Every card should fit on 1–2 pages.
+   ========================================================================== */
+
+body.ref {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.ref .lesson {
+  max-width: 46rem;
+  padding: 3rem 1.5rem 4rem;
+}
+
+.ref h1 { font-size: 1.9rem; margin-bottom: 0.3rem; }
+
+.ref .subtitle {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  margin-bottom: 2rem;
+}
+
+.ref h2 {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--rule);
+  padding-top: 0.7rem;
+  margin: 2rem 0 0.8rem;
+}
+
+/* term / definition rows */
+.defs { margin: 0 0 1rem; }
+.def {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dotted var(--rule);
+}
+.def:last-child { border-bottom: 0; }
+.def dt {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0;
+}
+.def dd {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.def dd .avoid {
+  display: block;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  font-style: italic;
+  margin-top: 0.2rem;
+}
+
+/* compact two-column grid for parallel facts */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.5rem;
+  margin: 1rem 0;
+}
+.card {
+  border: 1px solid var(--rule);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.85rem;
+}
+.card h3 {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 0.4rem;
+  color: var(--accent);
+}
+.card p:last-child { margin-bottom: 0; }
+.card ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+.card li { margin-bottom: 0.2rem; font-size: 0.84rem; }
+
+/* flow diagram — defined in lesson.css so lessons share it */
+.flow { margin: 1rem 0 1.4rem; }
+
+/* decision table */
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  margin: 1rem 0;
+}
+table.tbl th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--ink-soft);
+  padding: 0.4rem 0.6rem 0.4rem 0;
+}
+table.tbl td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.45rem 0.6rem 0.45rem 0;
+  vertical-align: top;
+}
+
+.ref pre { font-size: 0.72rem; margin: 0.8rem 0; }
+
+@media print {
+  .ref .lesson { max-width: none; }
+  .ref h2 { break-after: avoid; }
+  .def, .card, table.tbl tr { break-inside: avoid; }
+  .grid2 { break-inside: avoid; }
+}

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 01 — The loop is the agent</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="lesson">
+
+<div class="topbar">
+  <span>Building Agents · Lesson 01</span>
+  <a href="../reference/agent-loop.html">Reference card →</a>
+</div>
+
+<h1>The loop is the agent</h1>
+
+<p class="lede">
+  Everything you have heard called an "agent" is one loop. In this session you will
+  read that loop until it stops being impressive, run it offline for free, and then
+  break it in four ways so you know exactly what it does when it fails.
+</p>
+
+<div class="meta">
+  <span>90–120 min, hands-on</span>
+  <span>No API key needed</span>
+  <span>Two real bugs to find</span>
+</div>
+
+<div class="win">
+  <span class="label">You leave able to</span>
+  <p>
+    Write an agent loop from scratch in ~50 lines, name every part of it, explain why
+    an error must be returned as content instead of raised, and say what a step cap is
+    protecting you from — without looking anything up.
+  </p>
+</div>
+
+<h2>Why this first</h2>
+
+<p>
+  You are going to ship an agent at work. The failure mode that kills those projects is
+  not "the model wasn't good enough." It is the <em class="term">80% trap</em>: a demo
+  that thrills in a review and then collapses in week two, because the last 20% lives in
+  the control flow, the error paths, and the evals — and a framework hid all three from
+  you.
+</p>
+
+<p>
+  Dex Horthy interviewed roughly a hundred builders and found the same shape repeatedly:
+  grab a framework, reach 70–80% quality, discover 80% is not shippable, then
+  reverse-engineer the framework to find the missing 20% and end up rewriting from
+  scratch (<a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>).
+  The cheapest insurance against that is to build the thing once, by hand, on a task
+  small enough to finish today.
+</p>
+
+<p>
+  So we start at the bottom. Not because frameworks are bad, but because you cannot
+  debug what you did not write.
+</p>
+
+<h2>The claim, stated plainly</h2>
+
+<p>
+  An agent is a loop over three moves. Anthropic calls this "LLMs using tools based on
+  environmental feedback in a loop" and notes the implementation "is often straightforward"
+  (<a href="https://www.anthropic.com/research/building-effective-agents">Building
+  effective agents</a>). Thorsten Ball built a working code-editing agent in under 400
+  lines and titled the piece <em>The Emperor Has No Clothes</em>
+  (<a href="https://ampcode.com/how-to-build-an-agent">Amp</a>).
+</p>
+
+<pre><code>messages = [system_prompt, user_task]
+
+for step in range(MAX_STEPS):
+    turn = model.complete(messages, tools)   <span class="c"># 1. ask</span>
+    messages.append(turn)
+
+    if not turn.tool_calls:                  <span class="c"># 2. done?</span>
+        return turn.text
+
+    for call in turn.tool_calls:             <span class="c"># 3. act</span>
+        result = execute(call)
+        messages.append(result)              <span class="c">#    and observe</span>
+
+return TIMEOUT</code></pre>
+
+<p>
+  That is the whole architecture. A planner is this loop with an extra prompt. An
+  executor is the <code>execute</code> line, extracted. A graph is this loop with the
+  branches written down. Multi-agent is this loop calling itself. None of those are
+  wrong — but each is a decision you should make against a failing trace, not on day one.
+</p>
+
+<div class="callout">
+  <span class="label">The one sentence to remember</span>
+  <p>
+    The model does not do anything. It returns a <em class="term">tool call</em> — a
+    structured request — and <em>your code</em> decides whether to honour it. Every
+    guardrail you will ever build lives in that gap.
+  </p>
+</div>
+
+<h2>What you are going to build</h2>
+
+<p>
+  There is a working lab at <code>lab/</code> in this workspace. It is deliberately
+  small: a types module, a tool registry, two models, and the loop.
+</p>
+
+<div class="flow">
+  <div class="box">types.py<br><span class="cap">Message · Turn · ToolCall</span></div>
+  <div class="arrow">→</div>
+  <div class="box">tools.py<br><span class="cap">registry + 2 tools</span></div>
+  <div class="arrow">→</div>
+  <div class="box">models.py<br><span class="cap">scripted + real</span></div>
+  <div class="arrow">→</div>
+  <div class="box accent">loop.py<br><span class="cap">50 lines</span></div>
+</div>
+
+<p>
+  Two models, one interface. <code>ScriptedModel</code> makes decisions by reading the
+  conversation with rules instead of weights. That is not a mock — a mock asserts
+  "I expected exactly these calls", which breaks on every harmless prompt edit and
+  proves nothing. A scripted model asserts "given this conversation, a competent agent
+  would do X", which is the property you actually want to hold. It also means every lab
+  in this course runs offline and costs nothing, so you will never be tempted to
+  hand-test in place of writing a test.
+</p>
+
+<h2>Step 1 — watch the loop work</h2>
+
+<p>From the workspace root:</p>
+
+<pre><code><span class="c"># offline, deterministic, no key, no cost</span>
+python3 lab/run.py --task "Summarise the release checklist"</code></pre>
+
+<p>You should see something close to this:</p>
+
+<pre><code>TASK  Summarise the release checklist
+STATUS done  STEPS 3
+--------------------------------------------------------------------
+[1] model   (no text)  0ms
+          -> list_files({"path": "$REPO/lab/sandbox"})
+[1] tool     list_files => notes.txt\nrelease-checklist.txt
+[2] model   (no text)  0ms
+          -> read_file({"path": "$REPO/lab/sandbox/release-checklist.txt"})
+[2] tool     read_file => Release checklist — Q3\n============...
+[3] model   Done. Saw 2 file(s). First lines: Release checklist...
+[3] stop    final_answer
+--------------------------------------------------------------------</code></pre>
+
+<p>
+  Read what happened, because it is the entire lesson. The model was never told about
+  <code>release-checklist.txt</code>. It was told the task and given a tool inventory.
+  It chose to list, saw two files, chose the one whose name matched the task, read it,
+  and stopped. Nobody wrote "if the user mentions a checklist, read the checklist file."
+  That decision came from the model, at runtime, from the tool descriptions.
+</p>
+
+<p>
+  That is the difference between a <em class="term">workflow</em> and an
+  <em class="term">agent</em>, and it is the first thing you should be able to point at.
+</p>
+
+<h2>Step 2 — read the loop out loud</h2>
+
+<p>
+  Open <code>lab/agentlab/loop.py</code>. It is about fifty lines of body. Read it twice.
+  Then answer these from memory, out loud, before scrolling:
+</p>
+
+<ol>
+  <li>Where does the system prompt go, and why is it first?</li>
+  <li>What exactly makes the loop stop?</li>
+  <li>Why is the tool result appended as a <code>Message</code> rather than returned?</li>
+  <li>What happens if the model asks for two tools in one turn?</li>
+  <li>What is <code>max_steps</code> protecting?</li>
+</ol>
+
+<p>
+  If any of those felt shaky, you have found the thing to fix before moving on. Ask me —
+  that is what I am here for.
+</p>
+
+<h2>Step 3 — break it, on purpose, four ways</h2>
+
+<p>
+  An agent you have only seen succeed is an agent you do not understand. The tests in
+  <code>lab/tests/test_loop.py</code> encode the four failure modes worth knowing. Run
+  them:
+</p>
+
+<pre><code>cd lab &amp;&amp; python3 -m unittest discover -s tests -t . -v</code></pre>
+
+<p>Twelve tests, fifteen milliseconds, zero cost. Now read what they assert:</p>
+
+<div class="step">
+  <div class="num">01</div>
+  <div>
+    <p><strong>An unknown tool does not crash the run.</strong> The model hallucinates
+    <code>delete_everything</code>. The registry returns an error <em>string</em>, which
+    goes into the conversation, and the model gets a chance to recover. If you had raised
+    instead, the run would die and the model would learn nothing.</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">02</div>
+  <div>
+    <p><strong>A tool that throws does not crash the run.</strong> Same principle one
+    layer down: the boundary catches, formats, and returns. Note it distinguishes
+    <code>ToolError</code> (expected: bad path) from everything else (a bug in your code).
+    Without that distinction you end up sniffing strings for <code>"Error:"</code>, which
+    works right up until someone's file is named <code>Error:</code>.</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">03</div>
+  <div>
+    <p><strong>A looping agent is stopped by the cap, not by hope.</strong> The test feeds
+    fifty identical <code>list_files</code> calls and asserts the run stops at three. This
+    is the cheapest guardrail you will ever write, and the one most often left out.</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">04</div>
+  <div>
+    <p><strong>Relative paths are rejected.</strong> Not discouraged — rejected, with a
+    message that hands back the absolute path. Anthropic's team found during SWE-bench
+    that models fumble relative paths after moving directories, and fixed it by
+    <em>requiring</em> absolute paths. They call it poka-yoke: remove the failure mode
+    rather than documenting it.</p>
+  </div>
+</div>
+
+<h2>Step 4 — the bug I actually hit</h2>
+
+<p>
+  This lab was not written perfectly, and the imperfection is the most useful thing in
+  it. The first version had this line in the scripted model:
+</p>
+
+<pre><code><span class="c"># track which files we have read</span>
+read.append(str(c.args.get("path", "")))     <span class="c"># "/abs/path/notes.txt"</span>
+...
+<span class="c"># later, compare against the bare filename</span>
+if target not in read:                       <span class="c"># "notes.txt" — never matches</span></code></pre>
+
+<p>
+  Full path on one side, basename on the other. The membership test could never succeed,
+  so the agent re-read the same file until it hit the step cap. The trace looked like a
+  model that would not stop; the cause was a string comparison two files away from where
+  the symptom appeared.
+</p>
+
+<div class="callout">
+  <span class="label">The lesson in that bug</span>
+  <p>
+    Almost every "the model is being dumb" bug is a bug in your code, your tool
+    description, or your context. Read the trace before you touch the prompt. When you
+    do reach for the prompt, remember its errors are prompt text — an error message that
+    does not say what to do next is a wasted turn.
+  </p>
+</div>
+
+<p>
+  Reproduce the shape of it yourself: run with a two-step budget and watch it stop
+  mid-task.
+</p>
+
+<pre><code>python3 lab/run.py --steps 2</code></pre>
+
+<p>
+  <code>STATUS max_steps</code>. The run ends with a partial answer and, crucially, a
+  trace that says <em>where</em> it was cut off. That is what a good failure looks like:
+  boring, bounded, diagnosable.
+</p>
+
+<h2>Step 5 — go live, when you have a key</h2>
+
+<p>
+  The same loop, a real model, no code change beyond the flag:
+</p>
+
+<pre><code>export OPENAI_API_KEY=...
+python3 lab/run.py --live --task "Summarise the release checklist"</code></pre>
+
+<p>
+  Everything you learned offline still holds; only the decision-maker changed. This is
+  the payoff of the <code>Model</code> protocol: the loop does not know or care whether
+  decisions come from weights or from rules.
+</p>
+
+<h2>Check yourself</h2>
+
+<p>
+  Answer before clicking. The point is retrieval, not recognition — guessing and being
+  wrong here is worth more than rereading the page.
+</p>
+
+<div class="quiz" data-quiz>
+  <div class="quiz-q" data-answer="c">
+    <p class="quiz-prompt"><span class="qnum">01</span>What ends an agent loop in the lab?</p>
+    <div class="quiz-opts">
+      <button class="quiz-opt" data-opt="a"><span class="key">A</span>The model emits a message with empty text content</button>
+      <button class="quiz-opt" data-opt="b"><span class="key">B</span>The tool registry reports that no further tools remain</button>
+      <button class="quiz-opt" data-opt="c"><span class="key">C</span>The model returns a turn containing zero tool calls</button>
+      <button class="quiz-opt" data-opt="d"><span class="key">D</span>The context window finally runs out of remaining tokens</button>
+    </div>
+    <p class="quiz-why"><b>Why:</b> A turn with no tool calls is the model's claim that it is finished. That is the only success exit. The step cap is the other exit, and it is a failure. Text can be empty while tool calls are present; check the calls, not the prose.</p>
+  </div>
+
+  <div class="quiz-q" data-answer="b">
+    <p class="quiz-prompt"><span class="qnum">02</span>A tool raises <code>FileNotFoundError</code> mid-run. What should the loop do?</p>
+    <div class="quiz-opts">
+      <button class="quiz-opt" data-opt="a"><span class="key">A</span>Let the exception propagate and fail the whole agent run plainly</button>
+      <button class="quiz-opt" data-opt="b"><span class="key">B</span>Format it as error content and append it to the conversation state</button>
+      <button class="quiz-opt" data-opt="c"><span class="key">C</span>Retry the identical call twice before finally giving up on it</button>
+      <button class="quiz-opt" data-opt="d"><span class="key">D</span>Drop the failed call silently and continue with the next tool call</button>
+    </div>
+    <p class="quiz-why"><b>Why:</b> Errors are results. Returning them as content lets the model read the failure and change approach on the next turn — factor 9 of 12-Factor Agents, "compact errors into the context window". Raising kills a run that was one turn from recovering; retrying identically reproduces the same failure; dropping it silently makes the model confidently wrong.</p>
+  </div>
+
+  <div class="quiz-q" data-answer="d">
+    <p class="quiz-prompt"><span class="qnum">03</span>Your agent succeeds with two tools today. A teammate proposes twelve more and a planner. Best next step?</p>
+    <div class="quiz-opts">
+      <button class="quiz-opt" data-opt="a"><span class="key">A</span>Add all twelve tools and measure whether the agent improves</button>
+      <button class="quiz-opt" data-opt="b"><span class="key">B</span>Add the planner first, then add the twelve tools afterwards</button>
+      <button class="quiz-opt" data-opt="c"><span class="key">C</span>Build a second agent that supervises the first agent's runs</button>
+      <button class="quiz-opt" data-opt="d"><span class="key">D</span>Ask which current task fails, and reproduce that failure first</button>
+    </div>
+    <p class="quiz-why"><b>Why:</b> Anthropic's rule is to add complexity only when it demonstrably improves outcomes, and Horthy's is to adopt a pattern against a failing trace. More tools raise capability and lower reliability at once; without a failing case you cannot tell which happened. "It works, so let's make it bigger" is how projects reach the 80% trap.</p>
+  </div>
+
+  <div class="quiz-q" data-answer="a">
+    <p class="quiz-prompt"><span class="qnum">04</span>Why does <code>read_file</code> reject relative paths instead of resolving them?</p>
+    <div class="quiz-opts">
+      <button class="quiz-opt" data-opt="a"><span class="key">A</span>Rejecting removes a failure mode rather than documenting around it</button>
+      <button class="quiz-opt" data-opt="b"><span class="key">B</span>Resolving them silently costs one extra filesystem lookup per call</button>
+      <button class="quiz-opt" data-opt="c"><span class="key">C</span>Relative paths are not representable in a JSON schema property</button>
+      <button class="quiz-opt" data-opt="d"><span class="key">D</span>Models cannot reliably produce strings that contain slash characters</button>
+    </div>
+    <p class="quiz-why"><b>Why:</b> Poka-yoke. Anthropic found models failing with relative paths after directory changes and fixed it by requiring absolute ones — "the model used this method flawlessly". The error message then hands back the absolute path, so the next turn can succeed. Making misuse impossible beats writing more instructions about it.</p>
+  </div>
+
+  <div class="quiz-q" data-answer="c">
+    <p class="quiz-prompt"><span class="qnum">05</span>A run ends <code>STATUS max_steps</code> with a partial answer. What do you inspect first?</p>
+    <div class="quiz-opts">
+      <button class="quiz-opt" data-opt="a"><span class="key">A</span>The model's total parameter count against the task's difficulty</button>
+      <button class="quiz-opt" data-opt="b"><span class="key">B</span>The system prompt's tone and its overall formatting quality</button>
+      <button class="quiz-opt" data-opt="c"><span class="key">C</span>The trace, checking for repeated calls or a low cap</button>
+      <button class="quiz-opt" data-opt="d"><span class="key">D</span>The temperature setting, lowered to make output deterministic</button>
+    </div>
+    <p class="quiz-why"><b>Why:</b> Two very different causes, one symptom: thrash (repeated identical or failing calls) versus a genuinely larger task (cap too low). The trace distinguishes them instantly and nothing else does. Raising the cap on a thrashing agent just buys a larger bill; chasing the prompt on an under-budgeted agent just wastes a day.</p>
+  </div>
+
+  <div class="quiz-score" hidden></div>
+</div>
+
+<h2>Read this next</h2>
+
+<p>
+  Primary source, and the best two hours you can spend on this topic:
+  <a href="https://ampcode.com/how-to-build-an-agent">Thorsten Ball, "How to Build an
+  Agent"</a>. Follow along and actually type it out — he insists, and he is right. It is
+  the same loop in Go, arriving at a code-editing agent in under 400 lines.
+</p>
+
+<p>
+  Then skim <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>,
+  factors 1–4. You have already met the ideas; the value is in the vocabulary, which is
+  what you will use in a design review.
+</p>
+
+<h2>Where this goes next</h2>
+
+<p>
+  You can now build a loop. Lesson 02 is about <strong>whether you should</strong> — the
+  workflow-versus-agent decision, made with a checklist instead of taste, because most
+  production "agents" are 90% deterministic code with a few LLM calls at the joints.
+  Then: evals that gate merges, context engineering when the window fills, and finally
+  deployment with a budget cap and an approval gate on writes.
+</p>
+
+<div class="win">
+  <span class="label">Your tangible win</span>
+  <p>
+    A working loop you wrote, twelve tests that pass in fifteen milliseconds, and a trace
+    format you will reuse in every debugging session for the rest of the project. Commit
+    it.
+  </p>
+</div>
+
+<p class="small muted">
+  Stuck on anything — a line in the loop, an error message, an idea you want to argue
+  with — <strong>ask me</strong>. I am your teacher for this, not a search box. Questions
+  about why a design choice was made are usually more valuable than the lesson itself.
+</p>
+
+<div class="lesson-foot">
+  <h2>Primary source</h2>
+  <p>
+    <a href="https://ampcode.com/how-to-build-an-agent">How to Build an Agent</a> — Thorsten
+    Ball, Amp. Build the same loop in Go, from zero, in one sitting.
+  </p>
+
+  <h2>Also used</h2>
+  <ul class="tight-list">
+    <li><a href="https://www.anthropic.com/research/building-effective-agents">Building effective agents</a> — Anthropic. Workflow vs agent, ACI, poka-yoke.</li>
+    <li><a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a> — HumanLayer. Factors 1–4 and the 80% trap.</li>
+    <li><a href="https://huyenchip.com/2025/01/07/agents.html">Agents</a> — Chip Huyen. Compound error arithmetic, failure-mode taxonomy.</li>
+  </ul>
+
+  <h2>Files from this lesson</h2>
+  <ul class="tight-list">
+    <li><code>lab/agentlab/loop.py</code> — the loop, ~50 lines</li>
+    <li><code>lab/agentlab/models.py</code> — scripted and real models behind one protocol</li>
+    <li><code>lab/agentlab/tools.py</code> — registry, typed errors, poka-yoke paths</li>
+    <li><code>lab/tests/test_loop.py</code> — the four failure modes, asserted</li>
+    <li><a href="../reference/agent-loop.html">Reference card: the agent loop</a></li>
+    <li><a href="../GLOSSARY.md">Glossary</a></li>
+  </ul>
+
+  <div class="nav">
+    <span class="faint">Start of course</span>
+    <a class="next" href="../reference/agent-loop.html">Reference card →</a>
+  </div>
+</div>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
